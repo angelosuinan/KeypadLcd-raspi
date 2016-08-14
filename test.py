@@ -46,7 +46,7 @@ class Keypad(object):
     def start(self):
         try:
             start = time.time()
-            timeout = None
+            timeout =None
             while(True):
                 for x in range(3):
                     GPIO.output(col[x], 0)
@@ -82,24 +82,28 @@ class Keypad(object):
         if self.shiftmode:
             self.char = self.char.capitalize()
         if self.prevkey ==key:
-            self.count+=1
-            print values.get(key)[self.count] # change current char
+            self.count+=1                             # change current char
+            self.char = values.get(key)[self.count]
+            self.chg_char()
+            if self.shiftmode:
+                self.char = self.char.capitalize()
             if self.count == len(values.get(key))-1:
                 self.count =0; self.same=self.prevkey; self.prevkey=None
             return
-        self.count =0
         self.prevkey=key
-        if self.same == key:
-            print values.get(key)[self.count] #change current char
+        if self.same == key: #change current char
+            self.chg_char()
             return
-        self.parse_string()
-    def parse_string(self): #add char
+        self.add_char()
+    def add_char(self): #add char
         self._string = (self._string[:self.cursorx] + self.char
                 +self._string[self.cursorx:])#add to current cursor
         self.cursorx+=1
         self.show()
-    def change_char(self):
-        pass
+    def chg_char(self):
+        self._string = (self._string[:self.cursorx-1] + self.char +
+                self._string[self.cursorx:])
+        self.show()
     def csr_upd(self):
         lcd.set_cursor(self.cursorx,self.cursory)
     def show(self):

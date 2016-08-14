@@ -29,9 +29,11 @@ class Keypad(object):
     count = 0
     prevkey = None
     display_string = ""
-    same = 0
+    same = None
     cursorx = 0
     cursory = 0
+    cursorm =None
+    shiftmode= None
     def __init__(self):
         for x in range(3):
             GPIO.setup(col[x], GPIO.OUT)
@@ -42,7 +44,8 @@ class Keypad(object):
         return time.time()-start
     def start(self):
         try:
-            start=time.time()
+            start = time.time()
+            timeout = None
             while(True):
                 for x in range(3):
                     GPIO.output(col[x], 0)
@@ -53,11 +56,26 @@ class Keypad(object):
                                     pass # hold to three
                             self.get_keys(keypad[y][x])
                             sleep(.3)
+                            if not (keypad[y][x] is '*'or keypad[y][x] is '#') :
+                                timeout = self.get_present(start)
+                            if self.cursorx >0 and timeout:
+                                lcd.set_cursor(self.cursorx-1,self.cursory)
+                    if timeout:
+                        if self.get_present(start) - timeout >=3:
+                            self.csr_upd()
+                            self.prevkey, self.same = None, None
+                            present = None
+                            self.count =0
+                            timeout = None
                     GPIO.output(col[x], 1)
 
         except KeyboardInterrupt:
             GPIO.cleanup()
     def get_keys(self,key):
+        if key == '*' or key == '#':
+            self.spc_func(key)
+            self.csr_upd()
+            return
         if self.prevkey ==key:
             self.count+=1;
             if len(values.get(key)) ==1:
@@ -65,31 +83,44 @@ class Keypad(object):
                 return
             print values.get(key)[self.count] # change current char
             if self.count == len(values.get(key))-1:
-                self.count =0; self.prevkey = None; same=self.prevkey
+                self.count =0; self.prevkey = None; self.same=self.prevkey
             return
         self.count =0
         self.prevkey=key
         if self.same == key:
             print values.get(key)[self.count] #change current char
             return
-        print values.get(key)[self.count] #add char
+        #add char
         self.parse_string(values.get(key)[self.count])
     def parse_string(self,char):
-        before= self.display_string
-        if not before:
-            self.display_string += char
-        print self.display_string
+        if self.shiftmode:
+            char=str(char.capitalize())
+        if len(self.display_string)>=32:
+             return
+        self.display_string = (self.display_string[:self.cursorx] + char 
+                +self.display_string[self.cursorx:])#add to current cursor
+        if len(self.display_string)==17 and "\n" not in self.display_string:
+            self.display_string = self.display_string[:16] + "\n" + self.display_string[16:]
+        self.cursorx+=1
+        self.show()
+    def csr_upd(self):
+        lcd.set_cursor(self.cursorx,self.cursory)
+    def show(self):
         lcd.clear()
         lcd.blink(True)
-        if len(self.display_string)==17:
-            self.display_string = self.display_string[:16] + "\n" + self.display_string[16:]
-        if len(self.display_string)>=32:
-            lcd.message(before)
-            return
-        self.show()
-    def cursor_update(x,y):
-        pass
-    def show(self):
         lcd.message(self.display_string)
+    def spc_func(self, func):
+        if func == "*":
+            if self.shiftmode:
+                self.shiftmode =None
+            elif not self.shiftmode:
+                self.shiftmode = 1
+            return
+        if len(self.display_string) > 0:
+            self.display_string = self.display_string[:self.cursorx-1]
+            print self.display_string , 'asdsad' , self.cursorx
+            self.cursorx-=1
+            self.show()
+            print self.cursorx
 a = Keypad()
 a.start()

@@ -28,11 +28,10 @@ lcd.show_cursor(True)
 class Keypad(object):
     count = 0
     prevkey = None
-    _string = ""
-    char = ""
+    _string = char = ""
     same = None
     cursorx = 0
-    cursory = 0
+    csry = 0
     cursorm =None
     shiftmode= None
     def __init__(self):
@@ -60,7 +59,7 @@ class Keypad(object):
                             if not (keypad[y][x] in ['*','#']) :
                                 timeout = self.get_present(start)
                             if self.cursorx >0 and timeout:
-                                lcd.set_cursor(self.cursorx-1,self.cursory)
+                                lcd.set_cursor(self.cursorx-1,self.csry)
                     if timeout:
                         if self.get_present(start) - timeout >=3:
                             self.csr_upd()
@@ -90,6 +89,8 @@ class Keypad(object):
             if self.count == len(values.get(key))-1:
                 self.count =0; self.same=self.prevkey; self.prevkey=None
             return
+        self.count = 0
+        self.char = str(values.get(key)[self.count])
         self.prevkey=key
         if self.same == key: #change current char
             self.chg_char()
@@ -97,23 +98,30 @@ class Keypad(object):
         self.add_char()
     def add_char(self): #add char
         self._string = (self._string[:self.cursorx] + self.char
-                +self._string[self.cursorx:])#add to current cursor
+                +self._string[self.cursorx+1:])#add to current cursor
         self.cursorx+=1
         self.show()
     def chg_char(self):
         self._string = (self._string[:self.cursorx-1] + self.char +
-                self._string[self.cursorx:])
+                self._string[self.cursorx+1:])
         self.show()
     def csr_upd(self):
-        lcd.set_cursor(self.cursorx,self.cursory)
+        if len(self._string)>=16:
+            lcd.set_cursor(self.cursorx-16,self.csry)
+            return
+        lcd.set_cursor(self.cursorx,self.csry)
+        print self.cursorx, "    ", self.csry
     def show(self):
         lcd.clear()
         lcd.blink(True)
-        if len(self._string)==17 and "\n" not in self._string:
-            self._string = self._string[:16] + "\n" + self._string[16:]
-        if len(self._string)==16:
-            str.replace("\n", "")
-        lcd.message(self._string)
+        todisplay = self._string
+        if len(self._string)>=17 :
+            todisplay = self._string[:16] + '\n'+ self._string[16:]
+            self.csry=1
+        elif len(self._string)<=16:
+            self.csry=0
+            todisplay.replace('\n', '')
+        lcd.message(todisplay)
     def spc_func(self, func):
         if func == "*":
             if self.shiftmode:
@@ -126,6 +134,5 @@ class Keypad(object):
                     self._string[self.cursorx:])
             self.cursorx-=1
             self.show()
-            print self.cursorx
 a = Keypad()
 a.start()

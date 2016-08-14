@@ -28,7 +28,8 @@ lcd.show_cursor(True)
 class Keypad(object):
     count = 0
     prevkey = None
-    display_string = ""
+    _string = ""
+    char = ""
     same = None
     cursorx = 0
     cursory = 0
@@ -56,7 +57,7 @@ class Keypad(object):
                                     pass # hold to three
                             self.get_keys(keypad[y][x])
                             sleep(.3)
-                            if not (keypad[y][x] is '*'or keypad[y][x] is '#') :
+                            if not (keypad[y][x] in ['*','#']) :
                                 timeout = self.get_present(start)
                             if self.cursorx >0 and timeout:
                                 lcd.set_cursor(self.cursorx-1,self.cursory)
@@ -68,47 +69,47 @@ class Keypad(object):
                             self.count =0
                             timeout = None
                     GPIO.output(col[x], 1)
-
         except KeyboardInterrupt:
             GPIO.cleanup()
     def get_keys(self,key):
+        self.char = str(values.get(key)[self.count])
         if key == '*' or key == '#':
             self.spc_func(key)
             self.csr_upd()
             return
+        if len(self._string)>=32:
+            return
+        if self.shiftmode:
+            self.char = self.char.capitalize()
         if self.prevkey ==key:
-            self.count+=1;
-            if len(values.get(key)) ==1:
-                self.count = 0 ; self.prevkey = None; 
-                return
+            self.count+=1
             print values.get(key)[self.count] # change current char
             if self.count == len(values.get(key))-1:
-                self.count =0; self.prevkey = None; self.same=self.prevkey
+                self.count =0; self.same=self.prevkey; self.prevkey=None
             return
         self.count =0
         self.prevkey=key
         if self.same == key:
             print values.get(key)[self.count] #change current char
             return
-        #add char
-        self.parse_string(values.get(key)[self.count])
-    def parse_string(self,char):
-        if self.shiftmode:
-            char=str(char.capitalize())
-        if len(self.display_string)>=32:
-             return
-        self.display_string = (self.display_string[:self.cursorx] + char 
-                +self.display_string[self.cursorx:])#add to current cursor
-        if len(self.display_string)==17 and "\n" not in self.display_string:
-            self.display_string = self.display_string[:16] + "\n" + self.display_string[16:]
+        self.parse_string()
+    def parse_string(self): #add char
+        self._string = (self._string[:self.cursorx] + self.char
+                +self._string[self.cursorx:])#add to current cursor
         self.cursorx+=1
         self.show()
+    def change_char(self):
+        pass
     def csr_upd(self):
         lcd.set_cursor(self.cursorx,self.cursory)
     def show(self):
         lcd.clear()
         lcd.blink(True)
-        lcd.message(self.display_string)
+        if len(self._string)==17 and "\n" not in self._string:
+            self._string = self._string[:16] + "\n" + self._string[16:]
+        if len(self._string)==16:
+            str.replace("\n", "")
+        lcd.message(self._string)
     def spc_func(self, func):
         if func == "*":
             if self.shiftmode:
@@ -116,9 +117,9 @@ class Keypad(object):
             elif not self.shiftmode:
                 self.shiftmode = 1
             return
-        if len(self.display_string) > 0:
-            self.display_string = self.display_string[:self.cursorx-1]
-            print self.display_string , 'asdsad' , self.cursorx
+        if len(self._string) > 0:
+            self._string = (self._string[:self.cursorx-1]+
+                    self._string[self.cursorx:])
             self.cursorx-=1
             self.show()
             print self.cursorx

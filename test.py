@@ -3,13 +3,12 @@ from gpiozero import LED, Button
 from time import sleep
 import Adafruit_CharLCD as LCD
 import time
-from threading import Timer
 keypad = [ ['1','2','3'],
             ['4','5','6'],
             ['7','8','9'],
             ['*','0','#'],]
-row = [4,17,27,22] # 2 7 6 5     7 11 13 15
-col = [18,23,24] # 3 1 4         12 16 18
+row = [4,17,27,24] # 2 7 6 4    7 11 13 18
+col = [18,23,22] # 3 1 5        12 16 15
 values = { '1':['1','*','#'],
            '2':['a','b','c','2'],
            '3':['d','e','f','3'],
@@ -20,7 +19,7 @@ values = { '1':['1','*','#'],
            '8':['s','t','u','v','8'],
            '9':['w','x','y','z','9'],
            '*':['shift'],
-           '0':['space'],
+           '0':['0', ' '],
            '#':['back'],}
 lcd = LCD.Adafruit_CharLCD(26,19, 13, 6, 5, 11,
                                    16, 2, 4)
@@ -30,9 +29,9 @@ class Keypad(object):
     prevkey = None
     _string = char = ""
     same = None
-    cursorx = 0
+    csrx = 0
     csry = 0
-    cursorm =None
+    csrm =None
     shiftmode= None
     def __init__(self):
         for x in range(3):
@@ -40,6 +39,8 @@ class Keypad(object):
             GPIO.output(col[x], 1)
         for y in range(4):
             GPIO.setup(row[y], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(21,GPIO.OUT)
+        GPIO.output(21, 0)
     def get_present(self,start):
         return time.time()-start
     def start(self):
@@ -51,15 +52,21 @@ class Keypad(object):
                     GPIO.output(col[x], 0)
                     for y in range(4):
                         if GPIO.input(row[y])==0:
+                            hold = self.get_present(start)
                             while (GPIO.input(row[y])==0):
                                 if keypad[y][x]=='5':
-                                    pass # hold to three
-                            self.get_keys(keypad[y][x])
+                                    if self.get_present(start) - hold >=3:
+                                        GPIO.output(21, 1)
+                                        self.csrm=1
+                            if self.csrm:
+                                self.mv_csr(keypad[y][x])
+                            else:
+                                self.get_keys(keypad[y][x])
                             sleep(.3)
                             if not (keypad[y][x] in ['*','#']) :
                                 timeout = self.get_present(start)
-                            if self.cursorx >0 and timeout:
-                                lcd.set_cursor(self.cursorx-1,self.csry)
+                            if self.csrx >0 and timeout:
+                                lcd.set_cursor(self.csrx-1,self.csry)
                     if timeout:
                         if self.get_present(start) - timeout >=3:
                             self.csr_upd()
@@ -70,9 +77,26 @@ class Keypad(object):
                     GPIO.output(col[x], 1)
         except KeyboardInterrupt:
             GPIO.cleanup()
+    def mv_csr(self,direction):
+        limit = len(self._string)
+        if direction is '5':
+            self.csrm = None
+        elif direction is '2':
+            if len(self._string) > 0:
+                self.csrx-=1
+        elif direction is '6':
+            if self.csrx< len(self._string):
+                self.csrx+=1
+        elif direction is '2':
+            self.csry=0
+        elif direction is '8':
+            if len(self._string) >=16:
+                self.csry=1
+        else:
+            pass
+        self.csr_upd()
     def get_keys(self,key):
-        self.char = str(values.get(key)[self.count])
-        if key == '*' or key == '#':
+        if key in ['*', '#']:
             self.spc_func(key)
             self.csr_upd()
             return
@@ -92,33 +116,35 @@ class Keypad(object):
         self.count = 0
         self.char = str(values.get(key)[self.count])
         self.prevkey=key
+        if self.shiftmode:
+            self.char = self.char.capitalize()
         if self.same == key: #change current char
             self.chg_char()
             return
         self.add_char()
     def add_char(self): #add char
-        self._string = (self._string[:self.cursorx] + self.char
-                +self._string[self.cursorx+1:])#add to current cursor
-        self.cursorx+=1
+        self._string = (self._string[:self.csrx] + self.char
+                +self._string[self.csrx:])#add to current cursor
+        self.csrx+=1
         self.show()
     def chg_char(self):
-        self._string = (self._string[:self.cursorx-1] + self.char +
-                self._string[self.cursorx+1:])
+        self._string = (self._string[:self.csrx-1] + self.char +
+                self._string[self.csrx+1:])
         self.show()
     def csr_upd(self):
         if len(self._string)>=16:
-            lcd.set_cursor(self.cursorx-16,self.csry)
+            lcd.set_cursor(self.csrx-16,self.csry)
             return
-        lcd.set_cursor(self.cursorx,self.csry)
-        print self.cursorx, "    ", self.csry
+        lcd.set_cursor(self.csr,self.csry)
+        print self.csrx, "    ", self.csry
     def show(self):
         lcd.clear()
         lcd.blink(True)
         todisplay = self._string
-        if len(self._string)>=17 :
+        if len(self._string)>=16 :
             todisplay = self._string[:16] + '\n'+ self._string[16:]
             self.csry=1
-        elif len(self._string)<=16:
+        elif len(self._string)<=15:
             self.csry=0
             todisplay.replace('\n', '')
         lcd.message(todisplay)
@@ -130,9 +156,10 @@ class Keypad(object):
                 self.shiftmode = 1
             return
         if len(self._string) > 0:
-            self._string = (self._string[:self.cursorx-1]+
-                    self._string[self.cursorx:])
-            self.cursorx-=1
+            self._string = (self._string[:self.csrx-1]+
+                    self._string[self.csrx:])
+            self.csrx-=1
             self.show()
+            self.count =0
 a = Keypad()
 a.start()
